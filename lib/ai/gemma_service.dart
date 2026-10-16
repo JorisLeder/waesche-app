@@ -207,18 +207,19 @@ class GemmaDescriber implements DescriberEngine {
   @override
   Future<Description> describe(Uint8List jpeg) => service.run((model) async {
     final sw = Stopwatch()..start();
-    final chat = await model.createChat(
-      supportImage: true,
-      tools: [GemmaService.toolFrom(ToolSchemas.describe())],
-      supportsFunctionCalls: true,
-      toolChoice: ToolChoice.required,
-      modelType: ModelType.gemma4,
-      systemInstruction: Prompts.describeSystem,
-      maxOutputTokens: 256,
-      temperature: 0.2,
-    );
+    InferenceChat? chat;
     var raw = '';
     try {
+      chat = await model.createChat(
+        supportImage: true,
+        tools: [GemmaService.toolFrom(ToolSchemas.describe())],
+        supportsFunctionCalls: true,
+        toolChoice: ToolChoice.required,
+        modelType: ModelType.gemma4,
+        systemInstruction: Prompts.describeSystem,
+        maxOutputTokens: 256,
+        temperature: 0.2,
+      );
       await chat.addQueryChunk(Message(text: Prompts.describeUser(), isUser: true, imageBytes: jpeg));
       final r = await _collect(chat);
       raw = r.text;
@@ -226,8 +227,11 @@ class GemmaDescriber implements DescriberEngine {
       if (attrs != null) {
         return Description(attributes: attrs, raw: raw, elapsed: sw.elapsed, viaTool: r.toolName != null);
       }
+    } catch (e) {
+      // Werkzeug + Bild nicht unterstützt o. Ä.: weiter mit dem JSON-Rückfall.
+      raw = 'Werkzeugaufruf fehlgeschlagen: $e';
     } finally {
-      await chat.close();
+      await chat?.close();
     }
 
     // Rückfall: ohne Werkzeuge, Antwort als JSON-Text.
@@ -267,29 +271,53 @@ class GemmaMatcher implements MatcherEngine {
     List<String> previousAnswers = const [],
   }) => service.run((model) async {
     final labels = candidates.map((c) => c.label).toList();
-    final chat = await model.createChat(
-      tools: [
-        GemmaService.toolFrom(ToolSchemas.assign(labels)),
-        GemmaService.toolFrom(ToolSchemas.ask(labels)),
-        GemmaService.toolFrom(ToolSchemas.unclear(labels)),
-      ],
-      supportsFunctionCalls: true,
-      toolChoice: ToolChoice.required,
-      modelType: ModelType.gemma4,
-      systemInstruction: Prompts.matchSystem,
-      maxOutputTokens: 256,
-      temperature: 0.2,
-    );
+    InferenceChat? chat;
+    MatchDecision? viaTool;
     try {
+      chat = await model.createChat(
+        tools: [
+          GemmaService.toolFrom(ToolSchemas.assign(labels)),
+          GemmaService.toolFrom(ToolSchemas.ask(labels)),
+          GemmaService.toolFrom(ToolSchemas.unclear(labels)),
+        ],
+        supportsFunctionCalls: true,
+        toolChoice: ToolChoice.required,
+        modelType: ModelType.gemma4,
+        systemInstruction: Prompts.matchSystem,
+        maxOutputTokens: 256,
+        temperature: 0.2,
+      );
       await chat.addQueryChunk(Message(
         text: Prompts.matchUser(scan: scan, candidates: candidates, previousAnswers: previousAnswers),
         isUser: true,
       ));
       final r = await _collect(chat);
       lastRaw = r.text;
-      return _parser.parseMatch(candidates: candidates, toolName: r.toolName, args: r.args, text: r.text);
+      viaTool = _parser.parseMatch(candidates: candidates, toolName: r.toolName, args: r.args, text: r.text);
+    } catch (e) {
+      lastRaw = 'Werkzeugaufruf fehlgeschlagen: $e';
     } finally {
-      await chat.close();
+      await chat?.close();
+    }
+    if (viaTool != null && viaTool is! InvalidDecision) return viaTool;
+
+    // Rückfall: ohne Werkzeuge, Antwort als JSON-Text.
+    final plain = await model.createChat(
+      modelType: ModelType.gemma4,
+      systemInstruction: Prompts.matchSystem,
+      maxOutputTokens: 320,
+      temperature: 0.2,
+    );
+    try {
+      await plain.addQueryChunk(Message(
+        text: Prompts.matchUserJsonFallback(scan: scan, candidates: candidates, previousAnswers: previousAnswers),
+        isUser: true,
+      ));
+      final r = await _collect(plain);
+      lastRaw = '$lastRaw\n--- JSON-Rückfall ---\n${r.text}';
+      return _parser.parseMatch(candidates: candidates, text: r.text);
+    } finally {
+      await plain.close();
     }
   });
 }

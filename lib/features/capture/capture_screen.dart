@@ -45,7 +45,7 @@ class _CaptureScreenState extends State<CaptureScreen> with WidgetsBindingObserv
       final back = cams.firstWhere((c) => c.lensDirection == CameraLensDirection.back, orElse: () => cams.first);
       final c = CameraController(
         back,
-        ResolutionPreset.high,
+        ResolutionPreset.veryHigh, // 1080p: genug Details für Rippung, Nähte, Etiketten
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.jpeg,
       );
@@ -66,7 +66,9 @@ class _CaptureScreenState extends State<CaptureScreen> with WidgetsBindingObserv
     final c = _controller;
     if (c == null || !c.value.isInitialized) return;
     if (state == AppLifecycleState.inactive) {
-      _controller = null;
+      // Erst aus dem Baum nehmen, dann freigeben (sonst baut CameraPreview
+      // noch mit einem freigegebenen Controller).
+      setState(() => _controller = null);
       c.dispose();
     } else if (state == AppLifecycleState.resumed) {
       _init();

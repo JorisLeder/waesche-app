@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../ai/engines.dart';
+import '../../ai/gemma_service.dart';
 import '../../app/providers.dart';
 import '../../app/widgets.dart';
 import '../../core/db/wardrobe_repository.dart';
@@ -11,6 +12,7 @@ import '../../core/device/device_info.dart';
 import '../../core/utils/image_prep.dart';
 import '../../pipeline/decisions.dart';
 import '../../pipeline/identification_pipeline.dart';
+import '../../pipeline/matching_config.dart';
 import '../capture/capture_screen.dart';
 import '../wardrobe/item_edit_screen.dart';
 
@@ -58,6 +60,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       describer: _VlmSizedDescriber(ref.read(describerProvider)),
       matcher: ref.read(matcherProvider),
       embedder: ref.read(embedderProvider),
+      // Der Gemma-Matcher hat einen eigenen JSON-Rückfall; eine weitere
+      // Wiederholung würde auf langsamen Geräten nur Zeit kosten.
+      config: const MatchingConfig(maxLlmRetries: 0),
       onProgress: (m) {
         if (mounted) setState(() => _progress = m);
       },
@@ -139,7 +144,23 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
               padding: const EdgeInsets.all(16),
               children: [
                 Center(child: PhotoThumb(bytes: _photo, size: 160, radius: 12)),
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
+                ValueListenableBuilder<ModelStatus>(
+                  valueListenable: ref.watch(gemmaServiceProvider).status,
+                  builder: (context, st, _) => st.phase == ModelPhase.error || st.phase == ModelPhase.notInstalled
+                      ? Card(
+                          color: Theme.of(context).colorScheme.errorContainer,
+                          child: ListTile(
+                            leading: const Icon(Icons.warning_amber),
+                            title: Text(st.phase == ModelPhase.notInstalled
+                                ? 'KI-Modell nicht installiert – es entscheidet nur der Bildvergleich.'
+                                : 'KI-Modell nicht verfügbar – es entscheidet nur der Bildvergleich.'),
+                            subtitle: st.message.isEmpty ? null : Text(st.message),
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+                const SizedBox(height: 8),
                 switch (s) {
                   PipelineWorking() => _Working(text: _progress),
                   PipelineQuestion(:final question, :final round) => _QuestionView(
