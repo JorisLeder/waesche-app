@@ -20,7 +20,7 @@ Lernschleife: Jeder bestätigte Scan wird ein weiteres Referenzbild.
 
 ## Installation (Android)
 
-1. Auf GitHub unter **Releases** die neueste `WaescheWer-x.y.z.apk` am Handy öffnen und herunterladen.
+1. Am Handy https://github.com/JorisLeder/waesche-app/releases/latest öffnen und `WaescheWer-x.y.z.apk` herunterladen.
 2. Installieren („Unbekannte Apps installieren“ einmalig erlauben).
 3. In der App: **KI-Modell → Modell herunterladen** (ca. 2,6 GB, WLAN).
 4. **Personen** anlegen, dann im **Kleiderschrank** jedes Teil einmal mit Foto einpflegen.
@@ -75,7 +75,8 @@ lib/
 ### CI / Releases
 
 - Jeder Push: Analyse, Tests, APK als Artefakt (`.github/workflows/ci.yml`).
-- Tag `v*` (z. B. `v0.1.0`): signiertes APK als GitHub-Release (`.github/workflows/release.yml`).
+- Neue Version: `version:` in `pubspec.yaml` erhöhen (z. B. `0.1.1+1`) und auf `main` pushen. Gibt es den Tag `v0.1.1` noch nicht,
+  baut `.github/workflows/release.yml` ein signiertes APK und legt Tag und Release selbst an. `TESTPLAN.md` → „Neu in dieser Version“ vorher ergänzen.
 
 ### Release-Schlüssel (einmalig)
 

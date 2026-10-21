@@ -1,18 +1,66 @@
 name: Release
 
-# Ein Tag wie v0.1.0 baut ein signiertes APK und veröffentlicht es als GitHub-Release.
+# Neue Version = `version:` in pubspec.yaml erhöhen und auf main pushen.
+# Gibt es den Tag v<version> noch nicht, baut dieser Workflow ein signiertes APK
+# und legt Tag und GitHub-Release selbst an.
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+    paths:
+      - pubspec.yaml
+      - .github/workflows/release.yml
   workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      code: ${{ steps.ver.outputs.code }}
+      release: ${{ steps.tag.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version aus pubspec.yaml
+        id: ver
+        run: |
+          VERSION=$(grep -E '^version:' pubspec.yaml | sed -E 's/version:[[:space:]]*//; s/\+.*//')
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version '$VERSION' in pubspec.yaml hat nicht das Format X.Y.Z"
+            exit 1
+          fi
+          IFS=. read -r MAJOR MINOR PATCH <<< "$VERSION"
+          # versionCode muss mit jeder Version steigen, sonst lehnt Android das Update ab.
+          CODE=$((MAJOR * 1000000 + MINOR * 1000 + PATCH))
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "Version $VERSION, versionCode $CODE"
+
+      - name: Gibt es das Release schon?
+        id: tag
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/v${{ steps.ver.outputs.version }}" >/dev/null; then
+            echo "Tag v${{ steps.ver.outputs.version }} existiert bereits – kein neues Release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
   release:
+    needs: check
+    if: needs.check.outputs.release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+      CODE: ${{ needs.check.outputs.code }}
     steps:
       - uses: actions/checkout@v4
 
@@ -52,29 +100,24 @@ jobs:
             echo "keyPassword=$KEY_PASSWORD"
           } > android/key.properties
 
-      - name: Versionsnummer aus Tag
-        id: ver
-        run: |
-          TAG="${GITHUB_REF_NAME#v}"
-          echo "name=$TAG" >> "$GITHUB_OUTPUT"
-          echo "code=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
-
       - name: APK bauen (arm64)
         run: >
           flutter build apk --release --target-platform android-arm64
-          --build-name=${{ steps.ver.outputs.name }}
-          --build-number=${{ steps.ver.outputs.code }}
+          --build-name="$VERSION" --build-number="$CODE"
 
       - name: APK umbenennen
-        run: cp build/app/outputs/flutter-apk/app-release.apk "WaescheWer-${{ steps.ver.outputs.name }}.apk"
+        run: cp build/app/outputs/flutter-apk/app-release.apk "WaescheWer-$VERSION.apk"
 
-      - name: GitHub-Release
+      - name: GitHub-Release (legt auch den Tag an)
         uses: softprops/action-gh-release@v2
         with:
-          files: WaescheWer-${{ steps.ver.outputs.name }}.apk
+          tag_name: v${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
+          name: WäscheWer ${{ env.VERSION }}
+          files: WaescheWer-${{ env.VERSION }}.apk
           generate_release_notes: true
           body: |
             **Installation:** Diese Seite am Handy öffnen, die APK unten antippen, laden und installieren
             („Unbekannte Apps installieren“ einmalig erlauben). Updates installieren sich über die vorhandene App, die Daten bleiben erhalten.
 
-            **Bitte testen:** [Testplan – Neu in dieser Version](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/TESTPLAN.md)
+            **Bitte testen:** [Testplan – Neu in dieser Version](https://github.com/${{ github.repository }}/blob/v${{ env.VERSION }}/TESTPLAN.md)
