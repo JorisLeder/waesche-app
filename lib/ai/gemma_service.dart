@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_edge_ai/flutter_edge_ai.dart';
@@ -36,15 +37,22 @@ class ModelStatus {
 }
 
 class LoadReport {
-  const LoadReport({required this.elapsed, required this.backend, required this.before, required this.after});
+  const LoadReport({
+    required this.elapsed,
+    required this.backend,
+    required this.visionBackend,
+    required this.before,
+    required this.after,
+  });
 
   final Duration elapsed;
   final PreferredBackend? backend;
+  final PreferredBackend visionBackend;
   final DeviceSnapshot before;
   final DeviceSnapshot after;
 
   String describe() =>
-      'Laden: ${elapsed.inMilliseconds} ms, Backend: ${backend?.name ?? '–'}\n'
+      'Laden: ${elapsed.inMilliseconds} ms, Text: ${backend?.name ?? '–'}, Bild-Encoder: ${visionBackend.name}\n'
       'Vorher: ${before.describe()}\nNachher: ${after.describe()}';
 }
 
@@ -55,19 +63,38 @@ class LoadReport {
 /// Aufrufe laufen nacheinander (eine Session zur Zeit).
 class GemmaService {
   GemmaService({
-    this.idleTimeout = const Duration(minutes: 2),
+    this.idleTimeout = const Duration(seconds: 60),
+    this.unloadAfterUse = false,
     this.memoryGuard = const MemoryGuard(),
     this.preferredBackend = PreferredBackend.gpu,
-    this.maxTokens = 4096,
-  });
+    PreferredBackend? visionBackend,
+    this.maxTokens = 2048,
+  }) : visionBackend = visionBackend ?? defaultVisionBackend;
+
+  /// Der Bild-Encoder läuft in flutter_edge_ai ohne Vorgabe auf der CPU, weil er
+  /// auf Metal (iOS) und WebGPU abstürzt. Auf Android (OpenCL) ist die GPU
+  /// deutlich schneller; schlägt sie fehl, fällt [runVision] auf CPU zurück.
+  static PreferredBackend get defaultVisionBackend => Platform.isAndroid ? PreferredBackend.gpu : PreferredBackend.cpu;
 
   final Duration idleTimeout;
   final MemoryGuard memoryGuard;
 
+  /// Speicher-Sparmodus: Modell wenige Sekunden nach dem letzten Aufruf
+  /// freigeben statt erst nach [idleTimeout]. Langsamer (jeder Scan lädt neu),
+  /// dafür bleibt der Arbeitsspeicher zwischen den Scans frei.
+  bool unloadAfterUse;
+
   /// Gewünschtes Backend; was wirklich lief, steht in [ModelStatus.backend].
   PreferredBackend preferredBackend;
 
-  /// Kontextfenster (Prompt + Bild + Antwort). Ein Bild kostet einige hundert Tokens.
+  /// Backend des Bild-Encoders (siehe [defaultVisionBackend]).
+  PreferredBackend visionBackend;
+
+  /// Grund, falls der GPU-Bild-Encoder in dieser Sitzung auf CPU zurückfiel.
+  String? visionFallbackReason;
+
+  /// Kontextfenster (Prompt + Bild + Antwort). Ein Bild kostet einige hundert
+  /// Tokens; 2048 reicht für Beschreiben und Zuordnen und hält den KV-Cache klein.
   int maxTokens;
 
   final status = ValueNotifier(const ModelStatus(ModelPhase.unknown));
@@ -80,10 +107,45 @@ class GemmaService {
   bool get isLoaded => _model != null && !_model!.isClosed;
 
   /// Einstellungen für den Machbarkeits-Test; erzwingt ein Neuladen.
-  Future<void> configure({PreferredBackend? backend, int? maxTokens}) async {
+  Future<void> configure({PreferredBackend? backend, PreferredBackend? vision, int? maxTokens}) async {
     if (backend != null) preferredBackend = backend;
+    if (vision != null) {
+      visionBackend = vision;
+      visionFallbackReason = null;
+    }
     if (maxTokens != null) this.maxTokens = maxTokens;
     await unload();
+  }
+
+  /// Lädt das Modell vorab im Hintergrund (z. B. während die Kamera offen ist),
+  /// damit der erste Scan nicht auf das Laden warten muss. Fehler zeigt der
+  /// Status; der eigentliche Aufruf versucht es dann erneut.
+  Future<void> prewarm() async {
+    // Im Sparmodus nicht vorladen: Modell und Kamera gleichzeitig wären die Speicherspitze.
+    if (unloadAfterUse || isLoaded || status.value.phase == ModelPhase.loading) return;
+    if (!await refreshInstalled()) return;
+    try {
+      await run((_) async {});
+    } catch (e) {
+      debugPrint('Vorladen fehlgeschlagen: $e');
+    }
+  }
+
+  /// Wie [run], aber für Aufrufe mit Bild: Scheitert der GPU-Bild-Encoder,
+  /// wird einmal mit CPU-Bild-Encoder neu geladen und wiederholt.
+  Future<T> runVision<T>(Future<T> Function(InferenceModel model) f) async {
+    try {
+      return await run(f);
+    } on MemoryTooLowException {
+      rethrow;
+    } catch (e) {
+      if (visionBackend != PreferredBackend.gpu) rethrow;
+      visionFallbackReason = '$e';
+      debugPrint('GPU-Bild-Encoder fehlgeschlagen, wechsle auf CPU: $e');
+      visionBackend = PreferredBackend.cpu;
+      await unload();
+      return run(f);
+    }
   }
 
   Future<bool> refreshInstalled() async {
@@ -121,7 +183,9 @@ class GemmaService {
       } catch (e, st) {
         completer.completeError(e, st);
       } finally {
-        _idleTimer = Timer(idleTimeout, () => unload());
+        // Im Sparmodus nur kurz halten, damit Beschreiben und Zuordnen eines
+        // Scans nicht zweimal laden; danach sofort freigeben.
+        _idleTimer = Timer(unloadAfterUse ? const Duration(seconds: 5) : idleTimeout, () => unload());
       }
     });
     return completer.future;
@@ -137,13 +201,20 @@ class GemmaService {
       final model = await FlutterEdgeAi.getActiveModel(
         maxTokens: maxTokens,
         preferredBackend: preferredBackend,
+        preferredVisionBackend: visionBackend,
         supportImage: true,
         maxNumImages: 1,
       );
       sw.stop();
       final after = await DeviceInfo.snapshot();
       _model = model;
-      lastLoad = LoadReport(elapsed: sw.elapsed, backend: model.activeBackend, before: before, after: after);
+      lastLoad = LoadReport(
+        elapsed: sw.elapsed,
+        backend: model.activeBackend,
+        visionBackend: visionBackend,
+        before: before,
+        after: after,
+      );
       status.value = ModelStatus(ModelPhase.ready, backend: model.activeBackend, lastLoad: lastLoad);
       return model;
     } catch (e) {
@@ -205,7 +276,7 @@ class GemmaDescriber implements DescriberEngine {
   final _parser = const ResponseParser();
 
   @override
-  Future<Description> describe(Uint8List jpeg) => service.run((model) async {
+  Future<Description> describe(Uint8List jpeg) => service.runVision((model) async {
     final sw = Stopwatch()..start();
     InferenceChat? chat;
     var raw = '';
@@ -217,7 +288,7 @@ class GemmaDescriber implements DescriberEngine {
         toolChoice: ToolChoice.required,
         modelType: ModelType.gemma4,
         systemInstruction: Prompts.describeSystem,
-        maxOutputTokens: 256,
+        maxOutputTokens: 160,
         temperature: 0.2,
       );
       await chat.addQueryChunk(Message(text: Prompts.describeUser(), isUser: true, imageBytes: jpeg));

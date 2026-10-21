@@ -100,6 +100,29 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
               FilledButton.icon(onPressed: _download, icon: const Icon(Icons.download), label: const Text('Modell herunterladen')),
             if (st.phase == ModelPhase.installed || st.phase == ModelPhase.ready)
               FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Fertig')),
+            const Divider(height: 32),
+            SwitchListTile(
+              title: const Text('Speicher sparen'),
+              subtitle: const Text(
+                'Gibt den Arbeitsspeicher wenige Sekunden nach jedem Scan wieder frei. '
+                'Jeder Scan dauert dann etwas länger, weil die KI neu lädt.',
+              ),
+              value: gemma.unloadAfterUse,
+              onChanged: (v) async {
+                gemma.unloadAfterUse = v;
+                await ref.read(databaseProvider).setSetting(memorySaverKey, v ? '1' : '0');
+                if (v) await gemma.unload();
+                setState(() {});
+              },
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                'Hinweis: Android zeigt auch Zwischenspeicher als „belegt“ an. Den gibt das System sofort frei, '
+                'wenn eine andere App Platz braucht. Echte Belegung durch WäscheWer siehst du im Machbarkeits-Test.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
           ],
         ),
       ),

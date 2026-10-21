@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_edge_ai/flutter_edge_ai.dart' show PreferredBackend;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
@@ -23,11 +24,20 @@ import 'package:waesche_app/features/wardrobe/wardrobe_screen.dart';
 
 /// Ohne native KI-Laufzeit: Modell gilt als installiert.
 class FakeGemma extends GemmaService {
+  FakeGemma() : super(visionBackend: PreferredBackend.cpu);
+
   @override
   Future<bool> refreshInstalled() async {
     status.value = const ModelStatus(ModelPhase.installed);
     return true;
   }
+
+  // Keine native KI-Laufzeit im Test: Vorladen und Freigeben sind No-ops.
+  @override
+  Future<void> prewarm() async {}
+
+  @override
+  Future<void> unload() async {}
 }
 
 void main() {

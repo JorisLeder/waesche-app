@@ -17,6 +17,10 @@ class MatchingConfig {
     this.maxLlmRetries = 1,
     this.ownerContenderWindow = 0.15,
     this.ownerMinScore = 0.55,
+    this.expressEnabled = true,
+    this.expressMinSim = 0.88,
+    this.expressMinMargin = 0.08,
+    this.expressMinPhotos = 2,
   });
 
   /// Höchstzahl Kandidaten, die das LLM sieht (Kontext und Tempo).
@@ -48,4 +52,12 @@ class MatchingConfig {
   /// klar (sofern der Beste mindestens [ownerMinScore] erreicht).
   final double ownerContenderWindow;
   final double ownerMinScore;
+
+  /// Express-Weg: eindeutiger Bildtreffer ohne VLM. Mindestähnlichkeit, Abstand
+  /// zum besten Teil einer ANDEREN Person und Zahl verschiedener Fotos des
+  /// Teils (≥ 2 heißt: mindestens ein bestätigter Scan neben dem Referenzfoto).
+  final bool expressEnabled;
+  final double expressMinSim;
+  final double expressMinMargin;
+  final int expressMinPhotos;
 }

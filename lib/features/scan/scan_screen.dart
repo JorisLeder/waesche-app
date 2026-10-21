@@ -41,12 +41,24 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   String _progress = '';
   bool _logged = false;
   String _device = '';
+  // In initState gelesen: ref ist in dispose() nicht mehr nutzbar.
+  late final GemmaService _gemma;
 
   @override
   void initState() {
     super.initState();
+    _gemma = ref.read(gemmaServiceProvider);
+    // Modell schon laden, während die Kamera offen ist (nicht im Sparmodus).
+    _gemma.prewarm();
     WidgetsBinding.instance.addPostFrameCallback((_) => _scan());
     DeviceInfo.snapshot().then((s) => _device = s.model ?? '');
+  }
+
+  @override
+  void dispose() {
+    // Scan verlassen: Arbeitsspeicher sofort freigeben.
+    _gemma.unload();
+    super.dispose();
   }
 
   Future<void> _scan() async {

@@ -7,6 +7,9 @@ import '../core/db/photo_store.dart';
 import '../core/db/wardrobe_repository.dart';
 import '../features/household/household_package.dart';
 
+/// Einstellung „Speicher sparen“ (siehe [GemmaService.unloadAfterUse]).
+const memorySaverKey = 'memorySaver';
+
 /// Werden in main() mit den geöffneten Instanzen überschrieben.
 final databaseProvider = Provider<AppDatabase>((ref) => throw UnimplementedError('databaseProvider'));
 final photoStoreProvider = Provider<PhotoStore>((ref) => throw UnimplementedError('photoStoreProvider'));

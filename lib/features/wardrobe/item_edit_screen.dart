@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../ai/gemma_service.dart';
 import '../../app/providers.dart';
 import '../../app/widgets.dart';
 import '../../core/db/database.dart';
@@ -59,11 +60,17 @@ class _ItemEditScreenState extends ConsumerState<ItemEditScreen> {
 
   bool get _isNew => _itemId == null;
 
+  // In initState gelesen: ref ist in dispose() nicht mehr nutzbar.
+  late final GemmaService _gemma;
+
   @override
   void initState() {
     super.initState();
+    _gemma = ref.read(gemmaServiceProvider);
     _itemId = widget.itemId;
     _personId = widget.personId;
+    // Neues Teil: Die KI wird gleich gebraucht, also schon laden.
+    if (widget.itemId == null) _gemma.prewarm();
     _load();
   }
 
@@ -427,6 +434,7 @@ class _ItemEditScreenState extends ConsumerState<ItemEditScreen> {
     for (final c in [_name, _logo, _aufdruck, _merkmale, _markierung]) {
       c.dispose();
     }
+    _gemma.unload();
     super.dispose();
   }
 }

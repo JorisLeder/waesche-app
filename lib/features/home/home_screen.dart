@@ -34,9 +34,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ValueListenableBuilder<ModelStatus>(
             valueListenable: gemma.status,
             builder: (context, st, _) {
-              if (st.phase == ModelPhase.installed || st.phase == ModelPhase.ready || st.phase == ModelPhase.loading) {
-                return const SizedBox.shrink();
+              if (st.phase == ModelPhase.ready || st.phase == ModelPhase.loading) {
+                return Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.memory),
+                    title: Text(st.phase == ModelPhase.loading ? 'KI wird geladen …' : 'KI belegt Arbeitsspeicher'),
+                    subtitle: Text(gemma.unloadAfterUse
+                        ? 'Sparmodus: wird nach dem Scan sofort freigegeben.'
+                        : 'Wird nach 1 Minute ohne Nutzung automatisch freigegeben.'),
+                    trailing: st.phase == ModelPhase.ready
+                        ? TextButton(onPressed: gemma.unload, child: const Text('Freigeben'))
+                        : null,
+                  ),
+                );
               }
+              if (st.phase == ModelPhase.installed) return const SizedBox.shrink();
               return Card(
                 color: Theme.of(context).colorScheme.tertiaryContainer,
                 child: ListTile(

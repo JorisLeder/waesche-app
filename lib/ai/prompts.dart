@@ -23,7 +23,16 @@ class Prompts {
       'Du bist ein präziser Assistent, der Kleidungsstücke für die Wäschesortierung beschreibt. '
       'Du antwortest ausschließlich über das Werkzeug beschreibe_kleidung.';
 
+  /// Kurz gehalten: Die erlaubten Begriffe stehen bereits als Enums im
+  /// Werkzeug-Schema, jede Zeile hier kostet auf Mittelklasse-Handys Zeit.
   static String describeUser() =>
+      'Beschreibe das Kleidungsstück auf dem Foto so, dass man es von ähnlichen Teilen unterscheiden kann. '
+      'Achte auf Details: Rippung (ganz oder nur am Bündchen), andersfarbige Ferse/Spitze/Bündchen, '
+      'Logos, Aufdrucke, Löcher, Flecken. Nur erlaubte Begriffe aus dem Werkzeug verwenden, sonst "unbekannt". '
+      'besondere_merkmale: höchstens 15 Wörter.';
+
+  /// Mit vollständiger Begriffsliste für den JSON-Rückfall ohne Werkzeug-Schema.
+  static String _describeUserWithVocabulary() =>
       'Beschreibe das Kleidungsstück auf dem Foto so, dass man es von ähnlichen Teilen unterscheiden kann. '
       'Achte besonders auf Details: Rippung (ganz oder nur am Bündchen), andersfarbige Ferse/Spitze/Bündchen, '
       'Logos, Aufdrucke, Nähte, Löcher, Flecken.\n'
@@ -38,7 +47,7 @@ class Prompts {
 
   /// JSON-Fallback, falls das Modell nicht über das Werkzeug antwortet.
   static String describeUserJsonFallback() =>
-      '${describeUser()}\nAntworte nur mit einem JSON-Objekt mit den Schlüsseln '
+      '${_describeUserWithVocabulary()}\nAntworte nur mit einem JSON-Objekt mit den Schlüsseln '
       'kategorie, farben, muster, material_optik, laenge_schnitt, logo_marke, aufdruck_text, besondere_merkmale.';
 
   static const matchSystem =

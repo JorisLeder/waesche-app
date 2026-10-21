@@ -12,6 +12,26 @@ aus dem Teilen-Knopf im Machbarkeits-Test.
 
 ## Neu in dieser Version
 
+### v0.1.1: schneller und sparsamer
+Update einfach über v0.1.0 installieren, die Daten bleiben erhalten.
+
+**Tempo**
+- [ ] *Machbarkeits-Test → 2. Foto beschreiben*, 3–4 Fotos hintereinander: Zeit pro Foto notieren (das erste Foto inkl. Laden extra).
+      Zeile „Bild-Encoder: gpu“ prüfen. Steht dort „GPU fehlgeschlagen“, bitte den roten Text schicken.
+- [ ] Gleiche Fotos mit **Bild-Encoder: CPU** wiederholen: Ist GPU schneller? Stimmen die Beschreibungen genauso gut?
+- [ ] Scannen öffnen und ein paar Sekunden mit der Kamera warten (das Modell lädt schon im Hintergrund), dann auslösen:
+      Ist der erste Scan jetzt schneller als in v0.1.0?
+- [ ] **Express-Weg:** Ein Teil scannen und mit *Stimmt* bestätigen, dann dasselbe Teil nochmal scannen. Kommt das Ergebnis
+      nach 1–2 s mit „Bildvergleich (schnell)“? Wichtig: Bei ähnlichen Teilen **anderer** Personen darf der Express-Weg
+      nicht falsch zuordnen. Jede falsche Express-Zuordnung bitte melden.
+
+**Arbeitsspeicher**
+- [ ] Startbildschirm: Während die KI geladen ist, steht dort „KI belegt Arbeitsspeicher“ mit *Freigeben*.
+      Nach 1 Minute ohne Nutzung bzw. beim Verlassen des Scans verschwindet der Hinweis.
+- [ ] *KI-Modell → Speicher sparen* einschalten und ein paar Scans machen: Bleibt jetzt mehr RAM frei? Wie viel langsamer ist es?
+- [ ] *Machbarkeits-Test → Teilen*: Die Zeilen „App-Speicher“ zeigen, wie viel WäscheWer wirklich belegt
+      (anonym = echte Belegung, dateibasiert = Modell-Datei, die Android bei Bedarf sofort freigibt).
+
 ### v0.1.0: erste Testversion
 Alles ist neu, also bitte einmal die komplette Liste durchgehen. Am wichtigsten sind Abschnitt 1 (Modell-Download)
 und Abschnitt 2 (Machbarkeits-Test) auf **beiden** Geräten: Davon hängt ab, ob das Redmi eine schnellere

@@ -109,7 +109,9 @@ class _FeasibilityScreenState extends ConsumerState<FeasibilityScreen> {
       _add(
         'Foto beschreiben',
         'Gesamt: ${sw.elapsedMilliseconds} ms${wasLoaded ? '' : ' (inkl. Laden ${_gemma.lastLoad?.elapsed.inMilliseconds ?? '?'} ms)'}\n'
-            'Backend: ${_gemma.status.value.backend?.name ?? '–'}, über Werkzeug: ${d.viaTool ? 'ja' : 'nein (JSON-Rückfall)'}\n'
+            'Text: ${_gemma.status.value.backend?.name ?? '–'}, Bild-Encoder: ${_gemma.visionBackend.name}'
+            '${_gemma.visionFallbackReason != null ? ' (GPU fehlgeschlagen)' : ''}, '
+            'über Werkzeug: ${d.viaTool ? 'ja' : 'nein (JSON-Rückfall)'}\n'
             'Ergebnis: ${d.attributes.summary()}\n'
             'Roh: ${d.raw}',
       );
@@ -184,7 +186,8 @@ class _FeasibilityScreenState extends ConsumerState<FeasibilityScreen> {
     final header = [
       'WäscheWer Machbarkeits-Test',
       _device?.describe() ?? '',
-      'Einstellungen: Backend ${_gemma.preferredBackend.name}, Kontext ${_gemma.maxTokens}',
+      'Einstellungen: Text ${_gemma.preferredBackend.name}, Bild-Encoder ${_gemma.visionBackend.name}, '
+          'Kontext ${_gemma.maxTokens}, Sparmodus ${_gemma.unloadAfterUse ? 'an' : 'aus'}',
     ].join('\n');
     SharePlus.instance.share(ShareParams(text: '$header\n\n${_results.reversed.join('\n\n')}'));
   }
@@ -241,9 +244,34 @@ class _FeasibilityScreenState extends ConsumerState<FeasibilityScreen> {
           const SizedBox(height: 8),
           Row(
             children: [
+              const Text('Bild-Encoder: '),
+              SegmentedButton<PreferredBackend>(
+                segments: const [
+                  ButtonSegment(value: PreferredBackend.gpu, label: Text('GPU')),
+                  ButtonSegment(value: PreferredBackend.cpu, label: Text('CPU')),
+                ],
+                selected: {gemma.visionBackend},
+                onSelectionChanged: _busy
+                    ? null
+                    : (s) async {
+                        await gemma.configure(vision: s.first);
+                        setState(() {});
+                      },
+              ),
+            ],
+          ),
+          if (gemma.visionFallbackReason != null)
+            Text(
+              'GPU-Bild-Encoder ist fehlgeschlagen, es läuft CPU: ${gemma.visionFallbackReason}',
+              style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
+            ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
               const Text('Kontext: '),
               SegmentedButton<int>(
                 segments: const [
+                  ButtonSegment(value: 1024, label: Text('1024')),
                   ButtonSegment(value: 2048, label: Text('2048')),
                   ButtonSegment(value: 4096, label: Text('4096')),
                 ],

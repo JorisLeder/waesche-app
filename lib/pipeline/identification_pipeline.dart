@@ -5,6 +5,7 @@ import '../ai/prompts.dart';
 import '../ai/vector_math.dart';
 import '../core/models/catalog_item.dart';
 import '../core/models/garment_attributes.dart';
+import '../core/models/vocabulary.dart';
 import 'candidate_filter.dart';
 import 'decisions.dart';
 import 'matching_config.dart';
@@ -12,6 +13,7 @@ import 'rule_based_questions.dart';
 
 /// Welche Stufe die Zuordnung entschieden hat.
 enum Stage {
+  express('Bildvergleich (schnell)'),
   filter('Vorfilter'),
   llm('LLM'),
   rueckfrage('Rückfrage'),
@@ -149,6 +151,10 @@ class IdentificationPipeline {
     _round = 0;
     _currentQuestion = null;
     _catalog = catalog;
+    scanAttributes = GarmentAttributes.empty;
+    scanRaw = '';
+    scanEmbedding = null;
+    ranking = null;
     _total
       ..reset()
       ..start();
@@ -163,6 +169,11 @@ class IdentificationPipeline {
         scanEmbedding = null;
       }
     }
+
+    // Express-Weg: Bekannte Teile mit eindeutigem Bildtreffer brauchen keine
+    // KI-Beschreibung (spart auf Mittelklasse-Handys viele Sekunden).
+    final express = _expressMatch(catalog);
+    if (express != null) return _finish(express);
 
     _progress('Kleidungsstück wird beschrieben …');
     try {
@@ -371,7 +382,12 @@ class IdentificationPipeline {
   PipelineState reject(String itemId) {
     log.add(StageLog('Vorschlag abgelehnt', Duration.zero, itemId));
     final ranked = ranking?.ranked.map((c) => c.item).toList() ?? <CatalogItem>[];
-    final sameCategory = _catalog.where((i) => i.attributes.kategorie == scanAttributes.kategorie);
+    // Nach dem Express-Weg gibt es keine Scan-Beschreibung: dann zählt die
+    // Kategorie des abgelehnten Teils.
+    final kategorie = scanAttributes.kategorie != Vocabulary.unbekannt
+        ? scanAttributes.kategorie
+        : _catalog.where((i) => i.id == itemId).firstOrNull?.attributes.kategorie;
+    final sameCategory = _catalog.where((i) => i.attributes.kategorie == kategorie);
     final pool = <CatalogItem>[
       ...ranked,
       for (final i in sameCategory)
@@ -400,6 +416,40 @@ class IdentificationPipeline {
 
   PipelineState noneMatches() =>
       _finish(const PipelineNoMatch('Kein eingepflegtes Teil passt – das Teil ist vermutlich neu.'));
+
+  PipelineProposal? _expressMatch(List<CatalogItem> catalog) {
+    final emb = scanEmbedding;
+    if (!config.expressEnabled || emb == null || catalog.isEmpty) return null;
+    final sims = <(CatalogItem, double)>[
+      for (final i in catalog)
+        if (maxSimilarity(emb, i.allEmbeddings) case final double s) (i, s),
+    ]..sort((a, b) => b.$2.compareTo(a.$2));
+    if (sims.isEmpty) return null;
+    final (best, sim) = sims.first;
+    final otherPerson = sims.where((e) => e.$1.personId != best.personId).firstOrNull?.$2 ?? 0.0;
+    final photos = best.photos.where((p) => p.embeddings.isNotEmpty).length;
+    final ok = sim >= config.expressMinSim &&
+        sim - otherPerson >= config.expressMinMargin &&
+        photos >= config.expressMinPhotos;
+    log.add(StageLog(
+      'Express-Prüfung',
+      Duration.zero,
+      '${best.displayName}: ${sim.toStringAsFixed(3)}, nächste andere Person ${otherPerson.toStringAsFixed(3)}, '
+          '$photos Fotos → ${ok ? 'ja' : 'nein'}',
+    ));
+    if (!ok) return null;
+    // Liegt ein anderes Teil derselben Person ähnlich nah, ist nur der Besitzer
+    // sicher – dann lernt die Lernschleife nicht auf das falsche Teil.
+    final samePersonClose = sims.skip(1).any(
+      (e) => e.$1.personId == best.personId && sim - e.$2 < config.expressMinMargin,
+    );
+    return PipelineProposal(
+      item: best,
+      stage: Stage.express,
+      reason: 'Eindeutiger Bildtreffer (${sim.toStringAsFixed(2)}), ohne KI-Beschreibung.',
+      ownerOnly: samePersonClose,
+    );
+  }
 
   static bool _singleOwner(Iterable<CatalogItem> items) => items.map((i) => i.personId).toSet().length == 1;
 
