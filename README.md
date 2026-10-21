@@ -29,6 +29,14 @@ Tipp: Die App [Obtainium](https://github.com/ImranR98/Obtainium) installiert neu
 
 Voraussetzungen: Android 11+ (64-Bit/arm64), ≥ 6 GB RAM, ~3,5 GB freier Speicher.
 
+## Releases und Secrets kurz erklärt
+
+- **Release:** eine Download-Seite pro Version (z. B. `v0.1.0`) mit der fertigen APK. Am Handy öffnen, APK laden, installieren.
+  Neue Versionen installieren sich über die alte, die Daten bleiben erhalten. Jedes Release verlinkt den [Testplan](TESTPLAN.md).
+- **Secrets:** Android installiert ein Update nur, wenn es mit demselben Schlüssel signiert ist wie die installierte App.
+  Dieser Schlüssel darf nicht in den Code, deshalb liegt er als verschlüsseltes GitHub-Secret vor
+  (*Settings → Secrets and variables → Actions*). GitHub nutzt ihn nur beim Bauen; auslesen lässt er sich nicht.
+
 ## Erster Test: Machbarkeits-Test
 
 Startbildschirm → **Machbarkeits-Test**:

@@ -76,3 +76,5 @@ jobs:
           body: |
             **Installation:** Diese Seite am Handy öffnen, die APK unten antippen, laden und installieren
             („Unbekannte Apps installieren“ einmalig erlauben). Updates installieren sich über die vorhandene App, die Daten bleiben erhalten.
+
+            **Bitte testen:** [Testplan – Neu in dieser Version](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/TESTPLAN.md)
